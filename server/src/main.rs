@@ -1,8 +1,10 @@
 mod ws;
 
+use std::env;
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{routing::get, Router};
+use dotenvy::dotenv;
 use tokio::task::JoinSet;
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -12,6 +14,8 @@ use crate::ws::{websocket_handler, PubSubState};
 
 #[tokio::main]
 async fn main() {
+    dotenv().ok();
+
     // enable logging to console
     tracing_subscriber::registry()
         .with(
@@ -40,14 +44,18 @@ async fn main() {
     // run the websocket publishers
     set.spawn(async move {
         run_publishers(state).await;
-        // if let Err(publisher_error) = run_publishers(state.clone()).await {
-        //     tracing::error!("web server shut down: {}", publisher_error);
-        // }
     });
 
     // run the server
     set.spawn(async move {
-        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+        let port: u16 = env::var("PORT")
+            .unwrap_or("3000".to_string())
+            .parse()
+            .unwrap_or(3000);
+        let addr: SocketAddr = env::var("ADDRESS")
+            .unwrap_or(format!("0.0.0.0:{}", port))
+            .parse()
+            .unwrap_or(([0, 0, 0, 0], port).into());
         tracing::info!("listening on {}", addr);
 
         if let Err(axum_error) = axum::Server::bind(&addr)
