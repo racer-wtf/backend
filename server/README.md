@@ -30,21 +30,32 @@ subscriptions - a list of any subscriptions (see below)
 
 ### Subscriptions
 
-- **`online` - subscribes to online count**
+#### **`online` - subscribes to online count**
 
-    Example response:
-    ```json
-    {
-      "count": 23,
-      "type": "online"
-    }
-    ```
+Example response:
+```json
+{
+  "count": 23,
+  "type": "online"
+}
+```
+
+Frequency: **Every 5 seconds**
+
+#### **`leaderboard` - subscribes to leaderboard stats**
+
+Example response:
+```json
+
+```
+
+Frequency: **Every new block mined**
 
 ### Example
 
 ```bash
 $ websocat ws://127.0.0.1:3000/ws
-{"subscriptions": ["online"]} // subscribes to "online" broadcast every 5 seconds
+> {"subscriptions": ["online"]}
 {"count":1,"type":"online"}
 {"count":1,"type":"online"}
 {"count":1,"type":"online"}
