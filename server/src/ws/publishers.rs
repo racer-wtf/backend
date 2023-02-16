@@ -2,7 +2,9 @@ use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use titlecase::titlecase;
 use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinSet;
 use tokio::time;
@@ -56,6 +58,13 @@ async fn publish_online(sender: broadcast::Sender<String>, online_count: Arc<Ato
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct LeaderboardMessage {
+    #[serde(rename = "type")]
+    _type: String,
+    leaderboard: Vec<Emoji>,
+}
+
 /// Every new mined block, broadcasts the leaderboard
 async fn publish_leaderboard(
     sender: broadcast::Sender<String>,
@@ -71,51 +80,54 @@ async fn publish_leaderboard(
 
         tracing::trace!("publishing leaderboard");
 
-        let mut leaderboard = last_leaderboard.lock().await;
-        *leaderboard = json!({
-            "type": "online",
-            "leaderboard": [
-                {
-                  "emoji": "🌶️",
-                  "label": "Chili Pepper",
-                  "value": 61,
-                },
-                {
-                  "emoji": "🔥",
-                  "label": "Fire",
-                  "value": 40,
-                },
-                {
-                  "emoji": "🌞",
-                  "label": "Sun",
-                  "value": 20,
-                },
-                {
-                  "emoji": "🦠",
-                  "label": "Microbe",
-                  "value": 10,
-                },
-                {
-                  "emoji": "🫐",
-                  "label": "Blueberries",
-                  "value": 4,
-                },
-                {
-                  "emoji": "🍆",
-                  "label": "Eggplant",
-                  "value": 2,
-                },
-                {
-                  "emoji": "🤍",
-                  "label": "White Heart",
-                  "value": 2,
-                },
-            ]
-        })
-        .to_string();
+        let message = LeaderboardMessage {
+            _type: "leaderboard".to_string(),
+            leaderboard: generate_mock_leaderboard(),
+        };
+        match serde_json::to_string(&message) {
+            Ok(new_leaderboard) => {
+                let mut leaderboard = last_leaderboard.lock().await;
+                *leaderboard = new_leaderboard;
 
-        if let Err(e) = sender.send(leaderboard.clone()) {
-            tracing::error!("failed to broadcast online count: {}", e);
+                if let Err(e) = sender.send(leaderboard.clone()) {
+                    tracing::error!("failed to broadcast leaderboard: {}", e);
+                }
+            }
+            Err(e) => {
+                tracing::error!("failed to serialize leaderboard: {}", e);
+                continue;
+            }
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct Emoji {
+    emoji: String,
+    label: String,
+    value: u32,
+}
+
+fn generate_mock_leaderboard() -> Vec<Emoji> {
+    let mut emojis = vec!["🌶️", "🔥", "🌞", "🦠", "🫐", "🍆", "🤍"];
+    emojis.dedup(); // important!
+
+    let mut leaderboard: Vec<Emoji> = emojis
+        .iter()
+        .map(|emoji| {
+            let label = match emojis::get(emoji) {
+                Some(emoji) => emoji.name().to_string(),
+                None => "Unknown".to_string(),
+            };
+            Emoji {
+                emoji: emoji.to_string(),
+                label: titlecase(&label),
+                value: rand::random::<u32>() % 100,
+            }
+        })
+        .collect();
+
+    // leaderboard.sort_by(|a, b| b.value.cmp(&a.value));
+
+    leaderboard
 }

@@ -17,3 +17,6 @@ tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 serde_json.workspace = true
 serde = { workspace = true, features = ["derive"] }
 dotenvy = { workspace = true }
+emojis = "0.5.2"
+rand = "0.8.5"
+titlecase = "2.2.1"
