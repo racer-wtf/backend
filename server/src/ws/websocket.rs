@@ -90,10 +90,6 @@ async fn websocket(stream: WebSocket, state: Arc<PubSubState>, socket_address: S
                     // create new subscriptions
                     subscription_join_set =
                         create_subscriptions(result, state_clone.clone(), recv_task_sender.clone());
-
-                    // while let Some(res) = subscription_join_set.join_next().await {
-                    //     res.unwrap();
-                    // }
                 }
                 Err(e) => {
                     tracing::info!(
@@ -110,17 +106,9 @@ async fn websocket(stream: WebSocket, state: Arc<PubSubState>, socket_address: S
     });
 
     // blocks until any task finishes
-    while let Some(res) = socket_join_set.join_next().await {
-        res.unwrap();
-    }
-    // tokio::select! {
-    //     _ = (&mut recv_task) => {
-    //         mpsc_forwarder.abort();
-    //     },
-    //     _ = (&mut mpsc_forwarder) =>  {
-    //         recv_task.abort();
-    //     }
-    // };
+    socket_join_set.join_next().await;
+    socket_join_set.abort_all();
+    tracing::trace!("websocket closed for {}", socket_address);
 
     // clean up when connection closes
     state.online.fetch_sub(1, Ordering::Relaxed);
