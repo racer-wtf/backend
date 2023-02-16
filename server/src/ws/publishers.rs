@@ -19,6 +19,8 @@ pub async fn run_publishers(state: Arc<PubSubState>) {
         state.online.clone(),
     ));
 
+    set.spawn(publish_leaderboard(state.tx_leaderboard.clone()));
+
     // wait for all tasks to complete
     while let Some(res) = set.join_next().await {
         res.unwrap();
@@ -43,6 +45,66 @@ async fn publish_online(sender: broadcast::Sender<String>, online_count: Arc<Ato
             json!({
                 "type": "online",
                 "count": online_count,
+            })
+            .to_string(),
+        ) {
+            tracing::error!("failed to broadcast online count: {}", e);
+        }
+    }
+}
+
+/// Every new mined block, broadcasts the leaderboard
+async fn publish_leaderboard(sender: broadcast::Sender<String>) {
+    let mut interval = time::interval(Duration::from_secs(5));
+
+    loop {
+        interval.tick().await;
+        if sender.receiver_count() < 1 {
+            continue;
+        }
+
+        tracing::trace!("publishing leaderboard");
+
+        if let Err(e) = sender.send(
+            json!({
+                "type": "online",
+                "leaderboard": [
+                    {
+                      "emoji": "🌶️",
+                      "label": "Chili Pepper",
+                      "value": 61,
+                    },
+                    {
+                      "emoji": "🔥",
+                      "label": "Fire",
+                      "value": 40,
+                    },
+                    {
+                      "emoji": "🌞",
+                      "label": "Sun",
+                      "value": 20,
+                    },
+                    {
+                      "emoji": "🦠",
+                      "label": "Microbe",
+                      "value": 10,
+                    },
+                    {
+                      "emoji": "🫐",
+                      "label": "Blueberries",
+                      "value": 4,
+                    },
+                    {
+                      "emoji": "🍆",
+                      "label": "Eggplant",
+                      "value": 2,
+                    },
+                    {
+                      "emoji": "🤍",
+                      "label": "White Heart",
+                      "value": 2,
+                    },
+                ]
             })
             .to_string(),
         ) {
