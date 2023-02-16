@@ -7,7 +7,7 @@ use axum::extract::{ws::WebSocket, State};
 use axum::extract::{ConnectInfo, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use futures::{sink::SinkExt, stream::StreamExt};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio::task::JoinSet;
 
 use crate::ws::message::SubscriptionType;
@@ -20,6 +20,8 @@ pub struct PubSubState {
     pub online: Arc<AtomicU32>,
     // channel that sends information about online users
     pub tx_online: broadcast::Sender<String>,
+    // the actual leaderboard in text JSON format
+    pub leaderboard: Arc<Mutex<String>>,
     // channel that sends information about leaderboard
     pub tx_leaderboard: broadcast::Sender<String>,
 }
@@ -29,6 +31,7 @@ impl Default for PubSubState {
         Self {
             online: Arc::new(AtomicU32::new(0)),
             tx_online: broadcast::channel(10_000).0,
+            leaderboard: Arc::new(Mutex::new("".to_string())),
             tx_leaderboard: broadcast::channel(10_000).0,
         }
     }
@@ -133,7 +136,11 @@ fn create_subscriptions(
             SubscriptionType::Leaderboard => {
                 let receiver = state.tx_leaderboard.subscribe();
                 let sender = sender.clone();
-                join_set.spawn(subscribe_leaderboard(receiver, sender));
+                join_set.spawn(subscribe_leaderboard(
+                    receiver,
+                    sender,
+                    state.leaderboard.clone(),
+                ));
             }
         });
 

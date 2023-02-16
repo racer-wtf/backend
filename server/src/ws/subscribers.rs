@@ -2,7 +2,7 @@ use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 
 use serde_json::json;
-use tokio::sync::{broadcast::Receiver, mpsc::Sender};
+use tokio::sync::{broadcast::Receiver, mpsc::Sender, Mutex};
 
 /// Subscription for broadcasted online count messages
 pub async fn subscribe_online(
@@ -35,8 +35,15 @@ pub async fn subscribe_online(
 }
 
 /// Subscription for broadcasted leaderboard messages
-pub async fn subscribe_leaderboard(mut receiver: Receiver<String>, sender: Sender<String>) {
+pub async fn subscribe_leaderboard(
+    mut receiver: Receiver<String>,
+    sender: Sender<String>,
+    leaderboard: Arc<Mutex<String>>,
+) {
     // send initial data
+    if sender.send(leaderboard.lock().await.clone()).await.is_err() {
+        return;
+    }
 
     // subscribe to the leaderboard channel
     while let Ok(msg) = receiver.recv().await {
