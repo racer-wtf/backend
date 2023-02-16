@@ -1,4 +1,4 @@
 FROM rust:latest
-COPY .. .
+COPY . .
 RUN cargo build --release --bin server
 CMD ["./target/release/server"]
