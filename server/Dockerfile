@@ -1,3 +1,4 @@
-FROM rust:latest AS builder
+FROM rust:latest
 COPY .. .
-RUN cargo run --release --bin server
+RUN cargo build --release --bin server
+CMD ["./target/release/server"]
