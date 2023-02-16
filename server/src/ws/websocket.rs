@@ -128,7 +128,7 @@ fn create_subscriptions(
             SubscriptionType::Online => {
                 let receiver = state.tx_online.subscribe();
                 let sender = sender.clone();
-                join_set.spawn(subscribe_online(receiver, sender));
+                join_set.spawn(subscribe_online(receiver, sender, state.online.clone()));
             }
             SubscriptionType::Leaderboard => {
                 let receiver = state.tx_leaderboard.subscribe();
