@@ -104,30 +104,20 @@ async fn publish_leaderboard(
 #[derive(Serialize, Deserialize)]
 struct Emoji {
     emoji: String,
-    label: String,
     value: u32,
 }
 
 fn generate_mock_leaderboard() -> Vec<Emoji> {
-    let mut emojis = vec!["🌶️", "🔥", "🌞", "🦠", "🫐", "🍆", "🤍"];
+    let mut emojis = vec!["🌶️", "🔥", "🌞", "🦠", "🫐", "🍆", "🌸", "🤍"];
     emojis.dedup(); // important!
 
-    let mut leaderboard: Vec<Emoji> = emojis
+    let leaderboard: Vec<Emoji> = emojis
         .iter()
-        .map(|emoji| {
-            let label = match emojis::get(emoji) {
-                Some(emoji) => emoji.name().to_string(),
-                None => "Unknown".to_string(),
-            };
-            Emoji {
-                emoji: emoji.to_string(),
-                label: titlecase(&label),
-                value: rand::random::<u32>() % 100,
-            }
+        .map(|emoji| Emoji {
+            emoji: emoji.to_string(),
+            value: rand::random::<u32>() % 100,
         })
         .collect();
-
-    // leaderboard.sort_by(|a, b| b.value.cmp(&a.value));
 
     leaderboard
 }
