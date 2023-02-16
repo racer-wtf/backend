@@ -39,10 +39,8 @@ pub fn process_message(msg: Message, who: SocketAddr) -> ControlFlow<(), ()> {
 #[derive(PartialEq, Eq, Hash, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SubscriptionType {
-    Leaderboard,
-    Rewards,
-    Notifications,
     Online,
+    Leaderboard,
 }
 
 #[derive(Debug, Deserialize)]

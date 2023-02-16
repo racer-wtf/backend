@@ -13,10 +13,7 @@ use tokio::task::JoinSet;
 use crate::ws::message::SubscriptionType;
 
 use super::message::PubSubRequest;
-use super::{
-    process_subscription_message, subscribe_leaderboard, subscribe_notifications, subscribe_online,
-    subscribe_rewards,
-};
+use super::{process_subscription_message, subscribe_leaderboard, subscribe_online};
 
 pub struct PubSubState {
     // the count of users connected to ws server
@@ -25,8 +22,6 @@ pub struct PubSubState {
     pub tx_online: broadcast::Sender<String>,
     // channel that sends information about leaderboard
     pub tx_leaderboard: broadcast::Sender<String>,
-    // channel that sends information about rewards
-    pub tx_rewards: broadcast::Sender<String>,
 }
 
 impl Default for PubSubState {
@@ -35,7 +30,6 @@ impl Default for PubSubState {
             online: Arc::new(AtomicU32::new(0)),
             tx_online: broadcast::channel(10_000).0,
             tx_leaderboard: broadcast::channel(10_000).0,
-            tx_rewards: broadcast::channel(10_000).0,
         }
     }
 }
@@ -149,21 +143,9 @@ fn create_subscriptions(
                 join_set.spawn(subscribe_online(receiver, sender));
             }
             SubscriptionType::Leaderboard => {
-                let receiver = state.tx_rewards.subscribe();
+                let receiver = state.tx_leaderboard.subscribe();
                 let sender = sender.clone();
                 join_set.spawn(subscribe_leaderboard(receiver, sender));
-            }
-            SubscriptionType::Rewards => {
-                if let Some(address) = &result.address {
-                    let sender = sender.clone();
-                    join_set.spawn(subscribe_rewards(sender, address.to_owned()));
-                }
-            }
-            SubscriptionType::Notifications => {
-                if let Some(address) = &result.address {
-                    let sender = sender.clone();
-                    join_set.spawn(subscribe_notifications(sender, address.to_owned()));
-                }
             }
         });
 

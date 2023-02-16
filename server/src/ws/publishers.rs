@@ -9,6 +9,7 @@ use tokio::time;
 
 use super::PubSubState;
 
+/// Starts all publishers as threaded tasks
 pub async fn run_publishers(state: Arc<PubSubState>) {
     let mut set = JoinSet::new();
 

@@ -5,6 +5,5 @@ pub mod websocket;
 
 use message::*;
 use subscribers::*;
-use publishers::*;
 
 pub use websocket::{websocket_handler, PubSubState};
