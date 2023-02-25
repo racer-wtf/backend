@@ -7,7 +7,7 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
-sqlx = { version = "0.6", features = ["runtime-tokio-native-tls", "postgres"] }
+sqlx = { version = "0.6", features = ["runtime-tokio-native-tls", "postgres", "bigdecimal"] }
 tokio = { workspace = true }
 
 [dev-dependencies]
