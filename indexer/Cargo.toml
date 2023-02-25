@@ -7,4 +7,13 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
-ethers = { workspace = true }
+dotenvy.workspace = true
+ethers = { workspace = true, features = ["rustls"] }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+database = { path = "../database" }
+bigdecimal = "0.3.0"
+byte-slice-cast = "1.2.2"
+hex = "0.4.3"
+num-bigint = "0.4.3"
