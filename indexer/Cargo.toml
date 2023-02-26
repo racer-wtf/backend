@@ -17,3 +17,4 @@ bigdecimal = "0.3.0"
 byte-slice-cast = "1.2.2"
 hex = "0.4.3"
 num-bigint = "0.4.3"
+sqlx.workspace = true

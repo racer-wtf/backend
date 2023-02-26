@@ -1,6 +1,6 @@
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::types::BigDecimal;
-use sqlx::{Error, Result as SqlxResult};
+use sqlx::{Error, Postgres, Result as SqlxResult, Transaction};
 
 use super::models::{Cycle, Vote};
 
@@ -15,8 +15,16 @@ impl Database {
         Ok(Self { pool })
     }
 
+    pub async fn start_transaction(&self) -> SqlxResult<Transaction<'_, Postgres>> {
+        self.pool.begin().await
+    }
+
     /// Creates or replaces a cycle in the database
-    pub async fn create_cycle(&self, cycle: Cycle) -> SqlxResult<()> {
+    pub async fn create_cycle(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        cycle: Cycle,
+    ) -> SqlxResult<()> {
         sqlx::query!(
             "
 insert into cycles (
@@ -43,16 +51,39 @@ on conflict (id) do update set
             cycle.starting_block as _,
             cycle.block_length as _,
             cycle.vote_price as _,
-            cycle.balance as _
+            cycle.balance as _,
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Deletes cycles greater than provided `from_block` from the database
+    pub async fn delete_cycles(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        from_block: BigDecimal,
+    ) -> SqlxResult<()> {
+        sqlx::query!(
+            "
+delete from cycles
+where starting_block >= $1
+            ",
+            from_block as _
+        )
+        .execute(&mut *tx)
         .await?;
 
         Ok(())
     }
 
     /// Creates or replaces a vote in the database
-    pub async fn create_vote(&self, vote: Vote) -> SqlxResult<()> {
+    pub async fn create_vote(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        vote: Vote,
+    ) -> SqlxResult<()> {
         sqlx::query!(
             "
 insert into votes (
@@ -81,14 +112,37 @@ on conflict (id) do update set
             vote.amount as _,
             vote.placement as _
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Deletes votes greater than provided `from_block` from the database
+    pub async fn delete_votes(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        from_block: BigDecimal,
+    ) -> SqlxResult<()> {
+        sqlx::query!(
+            "
+delete from votes
+where block_number >= $1
+            ",
+            from_block as _
+        )
+        .execute(&mut *tx)
         .await?;
 
         Ok(())
     }
 
     /// Sets the `claimed` field to true on a vote
-    pub async fn claim_vote(&self, vote_id: BigDecimal) -> SqlxResult<()> {
+    pub async fn claim_vote(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        vote_id: BigDecimal,
+    ) -> SqlxResult<()> {
         sqlx::query!(
             "
 update votes
@@ -97,14 +151,39 @@ where id = $1
             ",
             vote_id as _,
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Resets all claimed votes to false where the cycle is greater than or equal to the
+    /// provided `from_block`
+    pub async fn reset_vote_claims(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        from_block: BigDecimal,
+    ) -> SqlxResult<()> {
+        sqlx::query!(
+            "
+update votes
+set claimed = false
+where block_number >= $1
+            ",
+            from_block as _
+        )
+        .execute(&mut *tx)
         .await?;
 
         Ok(())
     }
 
     /// Sets the block height
-    pub async fn set_block_height(&self, chain_id: BigDecimal, block_height: BigDecimal) -> SqlxResult<()> {
+    pub async fn set_block_height(
+        &self,
+        chain_id: BigDecimal,
+        block_height: BigDecimal,
+    ) -> SqlxResult<()> {
         sqlx::query!(
             "
 insert into block_heights (chain_id, height)
@@ -120,8 +199,9 @@ on conflict (chain_id) do update set height = $2
         Ok(())
     }
 
-    pub async fn get_block_height(&self, chain_id: BigDecimal) -> SqlxResult<Option<BigDecimal>> {
-        let result = sqlx::query!(
+    /// Gets the block height
+    pub async fn get_block_height(&self, chain_id: BigDecimal) -> SqlxResult<BigDecimal> {
+        let row = sqlx::query!(
             "
 select height
 from block_heights
@@ -132,7 +212,7 @@ where chain_id = $1
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(result.map(|r| r.height))
+        Ok(row.map(|r| r.height).unwrap_or(0.into()))
     }
 }
 
@@ -151,6 +231,7 @@ mod tests {
     }
 
     /// Starts a new Postgres container and returns a `Database` instance
+    #[allow(dead_code)]
     async fn setup_db() -> Database {
         let port = free_local_port().expect("No ports free");
         let image = RunnableImage::from(Postgres::default())

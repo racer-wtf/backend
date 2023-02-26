@@ -97,17 +97,16 @@ impl Listener {
                 .database
                 .get_block_height(bytes_to_bigdecimal(chain_id))
                 .await else { return };
-            let current_height = current_height.unwrap_or(BigDecimal::from(0));
+
+            let reorg_height = bytes_to_bigdecimal(block_number) - &self.reorg_threshold;
 
             // this picks which block to index from
-            // 1 - the max of either last indexed block or configured START_HEIGHT
-            // 2 - the min of the previous value or current RPC height - 7
+            // step 1 - finds the max of either last indexed block or configured START_HEIGHT
+            // step 2 - finds the min of the previous value or current RPC height - 7
             let useful_height =
                 BigDecimal::max(current_height, BigDecimal::from(self.starting_block));
-            let reorg_height = bytes_to_bigdecimal(block_number) - &self.reorg_threshold;
             let useful_height = BigDecimal::min(useful_height, reorg_height.clone());
 
-            tracing::info!("indexing from block {}", useful_height.to_string());
             self.index(&contract, bigdecimal_to_bytes(useful_height.clone()))
                 .await;
 
@@ -124,70 +123,131 @@ impl Listener {
 
     /// Given a block start, it saves all the events from that block to the database
     async fn index(&self, contract: &RacerContract, from_block: U64) {
+        tracing::trace!("indexing from block {}", from_block.to_string());
         let events = contract.events().from_block(from_block).query().await;
 
         if let Ok(events) = events {
+            let Ok(mut tx) = self.database.start_transaction().await else { return };
+
             for event in events {
                 match event {
                     RacerEvents::CycleCreatedFilter(event) => {
-                        self.create_cycle(event, from_block).await
+                        self.create_cycle(&mut tx, event, from_block).await
                     }
                     RacerEvents::VotePlacedFilter(event) => {
-                        self.create_vote(event, from_block).await
+                        self.create_vote(&mut tx, event, from_block).await
                     }
-                    RacerEvents::VoteClaimedFilter(event) => self.claim_vote(event).await,
+                    RacerEvents::VoteClaimedFilter(event) => {
+                        self.claim_vote(&mut tx, event, from_block).await
+                    }
                 }
+            }
+
+            match tx.commit().await {
+                Ok(_) => tracing::info!("indexed from block {}", from_block.to_string()),
+                Err(e) => tracing::error!("could not commit transaction: {:?}", e),
             }
         }
     }
 
     /// Saves a cycle to the database
-    async fn create_cycle(&self, event: CycleCreatedFilter, block_number: U64) {
+    async fn create_cycle(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        event: CycleCreatedFilter,
+        block_number: U64,
+    ) {
         let result = self
             .database
-            .create_cycle(Cycle {
-                id: bytes_to_bigdecimal(event.id),
-                block_number: bytes_to_bigdecimal(block_number),
-                creator: format!("{:#032x}", event.creator),
-                starting_block: bytes_to_bigdecimal(event.p2),
-                block_length: bytes_to_bigdecimal(event.p3),
-                vote_price: bytes_to_bigdecimal(event.p4),
-                balance: BigDecimal::from(0),
-            })
+            .delete_cycles(tx, bytes_to_bigdecimal(block_number))
             .await;
 
         match result {
-            Ok(_) => tracing::info!("cycle saving cycle to db: {:?}", event),
+            Ok(_) => tracing::info!("removed stale cycles: {:?}", event),
+            Err(e) => tracing::error!("error removing stale cycles: {:?}", e),
+        }
+
+        let result = self
+            .database
+            .create_cycle(
+                tx,
+                Cycle {
+                    id: bytes_to_bigdecimal(event.id),
+                    block_number: bytes_to_bigdecimal(block_number),
+                    creator: format!("{:#032x}", event.creator),
+                    starting_block: bytes_to_bigdecimal(event.p2),
+                    block_length: bytes_to_bigdecimal(event.p3),
+                    vote_price: bytes_to_bigdecimal(event.p4),
+                    balance: BigDecimal::default(),
+                },
+            )
+            .await;
+
+        match result {
+            Ok(_) => tracing::info!("cycle saved to db: {:?}", event),
             Err(e) => tracing::error!("error saving cycle to db: {:?}", e),
         }
     }
 
     /// Saves a vote to the database
-    async fn create_vote(&self, event: VotePlacedFilter, block_number: U64) {
+    async fn create_vote(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        event: VotePlacedFilter,
+        block_number: U64,
+    ) {
         let result = self
             .database
-            .create_vote(Vote {
-                id: bytes_to_bigdecimal(event.vote_id),
-                block_number: bytes_to_bigdecimal(block_number),
-                cycle_id: bytes_to_bigdecimal(event.cycle_id),
-                placer: format!("{:#032x}", event.placer),
-                symbol: event.symbol,
-                amount: bytes_to_bigdecimal(event.amount),
-                placement: bytes_to_bigdecimal(event.placement),
-            })
+            .delete_votes(tx, bytes_to_bigdecimal(block_number))
             .await;
 
         match result {
-            Ok(_) => tracing::info!("vote saving cycle to db: {:?}", event),
+            Ok(_) => tracing::info!("removed stale votes: {:?}", event),
+            Err(e) => tracing::error!("error removing stale votes: {:?}", e),
+        }
+
+        let result = self
+            .database
+            .create_vote(
+                tx,
+                Vote {
+                    id: bytes_to_bigdecimal(event.vote_id),
+                    block_number: bytes_to_bigdecimal(block_number),
+                    cycle_id: bytes_to_bigdecimal(event.cycle_id),
+                    placer: format!("{:#032x}", event.placer),
+                    symbol: event.symbol,
+                    amount: bytes_to_bigdecimal(event.amount),
+                    placement: bytes_to_bigdecimal(event.placement),
+                },
+            )
+            .await;
+
+        match result {
+            Ok(_) => tracing::info!("vote saved to db: {:?}", event),
             Err(e) => tracing::error!("error saving vote to db: {:?}", e),
         }
     }
 
     /// Saves a vote claim to the database
-    async fn claim_vote(&self, event: VoteClaimedFilter) {
+    async fn claim_vote(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        event: VoteClaimedFilter,
+        block_number: U64,
+    ) {
         let result = self
             .database
-            .claim_vote(bytes_to_bigdecimal(event.id))
+            .reset_vote_claims(tx, bytes_to_bigdecimal(block_number))
+            .await;
+
+        match result {
+            Ok(_) => tracing::info!("removed stale vote claims: {:?}", event),
+            Err(e) => tracing::error!("error removing stale vote claims: {:?}", e),
+        }
+
+        let result = self
+            .database
+            .claim_vote(tx, bytes_to_bigdecimal(event.id))
             .await;
 
         match result {
