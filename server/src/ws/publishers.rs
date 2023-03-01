@@ -103,7 +103,7 @@ impl Leaderboard {
         database_url: &str,
         rpc_url: &str,
     ) -> Result<Self, Box<dyn Error>> {
-        let database = Database::new(&database_url).await?;
+        let database = Database::new(database_url).await?;
         let eth_client = Provider::<Http>::try_from(rpc_url).expect("Could not connect to RPC");
         let chain_id = bytes_to_bigdecimal(eth_client.get_chainid().await?);
 
@@ -126,10 +126,10 @@ impl Leaderboard {
             }
 
             tracing::trace!("publishing leaderboard");
-            if let Err(_) = timeout(
+            if timeout(
                 Duration::from_secs(5),
                 self.publish_leaderboard(last_leaderboard.clone())
-            ).await {
+            ).await.is_err() {
                 tracing::error!("failed to publish leaderboard");
             }
         }

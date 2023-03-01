@@ -108,7 +108,7 @@ impl Listener {
                     BigDecimal::max(current_height, BigDecimal::from(self.starting_block));
                 let useful_height = BigDecimal::min(useful_height, reorg_height.clone());
 
-                self.index(&contract, bigdecimal_to_bytes(useful_height.clone()))
+                self.index(contract, bigdecimal_to_bytes(useful_height.clone()))
                     .await;
 
                 match self
