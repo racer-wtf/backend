@@ -7,6 +7,8 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
+database = { path = "../database" }
+bytes = { path = "../bytes" }
 tokio = { workspace = true, features = ["macros", "sync"] }
 axum = { version = "0.6.6", features = ["ws", "headers"] }
 futures = "0.3.26"
@@ -20,3 +22,5 @@ dotenvy = { workspace = true }
 emojis = "0.5.2"
 rand = "0.8.5"
 titlecase = "2.2.1"
+bigdecimal.workspace = true
+ethers = { workspace = true, features = ["rustls"] }

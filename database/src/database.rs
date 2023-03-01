@@ -2,7 +2,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::types::BigDecimal;
 use sqlx::{Error, Postgres, Result as SqlxResult, Transaction};
 
-use super::models::{Cycle, Vote};
+use super::models::{Cycle, Leaderboard, Vote};
 
 pub struct Database {
     pool: PgPool,
@@ -29,6 +29,7 @@ impl Database {
             "
 insert into cycles (
     id,
+    chain_id,
     block_number,
     creator,
     starting_block,
@@ -36,16 +37,18 @@ insert into cycles (
     vote_price,
     balance
 )
-values ($1, $2, $3, $4, $5, $6, $7)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
 on conflict (id) do update set
-    block_number = $2,
-    creator = $3,
-    starting_block = $4,
-    block_length = $5,
-    vote_price = $6,
-    balance = $7
+    chain_id = $2,
+    block_number = $3,
+    creator = $4,
+    starting_block = $5,
+    block_length = $6,
+    vote_price = $7,
+    balance = $8
             ",
             cycle.id as _,
+            cycle.chain_id as _,
             cycle.block_number as _,
             cycle.creator as _,
             cycle.starting_block as _,
@@ -64,13 +67,17 @@ on conflict (id) do update set
         &self,
         tx: &mut Transaction<'_, Postgres>,
         from_block: BigDecimal,
+        chain_id: BigDecimal,
     ) -> SqlxResult<()> {
         sqlx::query!(
             "
 delete from cycles
-where starting_block >= $1
+where
+    starting_block >= $1
+    and chain_id = $2
             ",
-            from_block as _
+            from_block as _,
+            chain_id as _
         )
         .execute(&mut *tx)
         .await?;
@@ -88,29 +95,29 @@ where starting_block >= $1
             "
 insert into votes (
     id,
+    chain_id,
     block_number,
     cycle_id,
     placer,
     symbol,
-    amount,
-    placement
+    amount
 )
 values ($1, $2, $3, $4, $5, $6, $7)
 on conflict (id) do update set
-    block_number = $2,
-    cycle_id = $3,
-    placer = $4,
-    symbol = $5,
-    amount = $6,
-    placement = $7
+    chain_id = $2,
+    block_number = $3,
+    cycle_id = $4,
+    placer = $5,
+    symbol = $6,
+    amount = $7
             ",
             vote.id as _,
+            vote.chain_id as _,
             vote.block_number as _,
             vote.cycle_id as _,
             vote.placer as _,
             vote.symbol as _,
             vote.amount as _,
-            vote.placement as _
         )
         .execute(&mut *tx)
         .await?;
@@ -123,13 +130,17 @@ on conflict (id) do update set
         &self,
         tx: &mut Transaction<'_, Postgres>,
         from_block: BigDecimal,
+        chain_id: BigDecimal,
     ) -> SqlxResult<()> {
         sqlx::query!(
             "
 delete from votes
-where block_number >= $1
+where
+    block_number >= $1
+    and chain_id = $2
             ",
-            from_block as _
+            from_block as _,
+            chain_id as _
         )
         .execute(&mut *tx)
         .await?;
@@ -137,19 +148,46 @@ where block_number >= $1
         Ok(())
     }
 
+    /// Gets the count of votes for provided `cycle_id`
+    pub async fn get_vote_count(
+        &self,
+        cycle_id: BigDecimal,
+        chain_id: BigDecimal,
+    ) -> SqlxResult<i64> {
+        let result = sqlx::query!(
+            "
+select count(*)
+from votes
+where
+    cycle_id = $1
+    and chain_id = $2
+            ",
+            cycle_id as _,
+            chain_id as _
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(result.count.unwrap_or(0))
+    }
+
     /// Sets the `claimed` field to true on a vote
     pub async fn claim_vote(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         vote_id: BigDecimal,
+        chain_id: BigDecimal,
     ) -> SqlxResult<()> {
         sqlx::query!(
             "
 update votes
 set claimed = true
-where id = $1
+where
+    id = $1
+    and chain_id = $2
             ",
             vote_id as _,
+            chain_id as _
         )
         .execute(&mut *tx)
         .await?;
@@ -163,14 +201,18 @@ where id = $1
         &self,
         tx: &mut Transaction<'_, Postgres>,
         from_block: BigDecimal,
+        chain_id: BigDecimal,
     ) -> SqlxResult<()> {
         sqlx::query!(
             "
 update votes
 set claimed = false
-where block_number >= $1
+where
+    block_number >= $1
+    and chain_id = $2
             ",
-            from_block as _
+            from_block as _,
+            chain_id as _
         )
         .execute(&mut *tx)
         .await?;
@@ -213,6 +255,54 @@ where chain_id = $1
         .await?;
 
         Ok(row.map(|r| r.height).unwrap_or(0.into()))
+    }
+
+    /// Gets the current cycle from the database
+    pub async fn get_current_cycle(&self, chain_id: BigDecimal) -> SqlxResult<Cycle> {
+        sqlx::query_as!(
+            Cycle,
+            "
+select *
+from cycles
+where
+    current is true
+    and chain_id = $1
+order by block_number desc
+limit 1
+            ",
+            chain_id as _,
+        )
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    /// Gets leaderboard for the provided `cycle_id`
+    pub async fn get_leaderboard(
+        &self,
+        cycle_id: BigDecimal,
+        chain_id: BigDecimal,
+    ) -> SqlxResult<Vec<Leaderboard>> {
+        sqlx::query_as!(
+            Leaderboard,
+            "
+select
+	symbol,
+	sum(amount) as amount,
+	max(block_number) as max_block
+from votes
+where
+    cycle_id = $1
+    and chain_id = $2
+group by symbol
+order by
+	amount desc,
+	max_block asc
+            ",
+            cycle_id,
+            chain_id
+        )
+        .fetch_all(&self.pool)
+        .await
     }
 }
 

@@ -1,6 +1,7 @@
 mod ws;
 
 use std::env;
+use std::panic;
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{routing::get, Router};
@@ -15,6 +16,11 @@ use crate::ws::{websocket_handler, PubSubState};
 #[tokio::main]
 async fn main() {
     dotenv().ok();
+
+    // suppress panic messages
+    panic::set_hook(Box::new(|_info| {
+        // do nothing
+    }));
 
     // enable logging to console
     tracing_subscriber::registry()
@@ -43,7 +49,12 @@ async fn main() {
 
     // run the websocket publishers
     set.spawn(async move {
-        run_publishers(state).await;
+        run_publishers(
+            state,
+            &env::var("DATABASE_URL").expect("DATABASE_URL is not set"),
+            &env::var("RPC_URL").expect("RPC_URL is not set"),
+        )
+        .await;
     });
 
     // run the server

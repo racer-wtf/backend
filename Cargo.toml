@@ -1,5 +1,5 @@
 [workspace]
-members = ["indexer", "server", "database"]
+members = ["indexer", "server", "database", "bytes"]
 
 [workspace.package]
 authors = ["hexcowboy <hex@cowboy.dev>"]
@@ -17,3 +17,4 @@ dotenvy = "0.15.6"
 tracing = "0.1.37"
 tracing-subscriber = "0.3.16"
 sqlx = "0.6"
+bigdecimal = "0.3.0"

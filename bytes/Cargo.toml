@@ -1,0 +1,13 @@
+[package]
+name = "bytes"
+version = "0.1.0"
+edition = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+byte-slice-cast = "1.2.2"
+num-bigint = "0.4.3"
+ethers.workspace = true
+bigdecimal.workspace = true

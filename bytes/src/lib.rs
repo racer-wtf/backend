@@ -17,3 +17,4 @@ pub fn bigdecimal_to_bytes(bigdecimal: BigDecimal) -> U64 {
     array[..bytes.len()].copy_from_slice(&bytes);
     U64::from_little_endian(&array)
 }
+
