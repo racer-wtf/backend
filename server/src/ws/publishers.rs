@@ -1,4 +1,5 @@
 use std::error::Error;
+use tokio::time::timeout;
 use std::panic;
 use std::str;
 use std::sync::atomic::AtomicU32;
@@ -125,7 +126,12 @@ impl Leaderboard {
             }
 
             tracing::trace!("publishing leaderboard");
-            self.publish_leaderboard(last_leaderboard.clone()).await;
+            if let Err(_) = timeout(
+                Duration::from_secs(5),
+                self.publish_leaderboard(last_leaderboard.clone())
+            ).await {
+                tracing::error!("failed to publish leaderboard");
+            }
         }
     }
 
